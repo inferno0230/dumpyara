@@ -82,6 +82,10 @@ if [[ -d "$PROJECT_DIR/vmlinux-to-elf" ]]; then
 else
     git clone -q https://github.com/marin-m/vmlinux-to-elf "$PROJECT_DIR/vmlinux-to-elf"
 fi
+if [[ ! -f "$PROJECT_DIR"/magiskboot_x86_64 ]]; then
+    wget -O "$PROJECT_DIR"/magiskboot_x86_64 https://raw.githubusercontent.com/TeamWin/external_magisk-prebuilt/android-12.1/prebuilt/magiskboot_x86_64 > /dev/null 2>&1
+    chmod +x "$PROJECT_DIR"/magiskboot_x86_64
+fi
 
 # extract rom via Firmware_extractor
 [[ ! -d "$1" ]] && bash "$PROJECT_DIR"/Firmware_extractor/extractor.sh "$PROJECT_DIR"/input/"${FILE}" "$PROJECT_DIR"/working/"${UNZIP_DIR}"
@@ -102,17 +106,52 @@ if [[ -f "$PROJECT_DIR"/working/"${UNZIP_DIR}"/boot.img ]]; then
     echo 'boot.elf generated'
 fi
 
+# Extract vendor_boot.img
+if [[ -f "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendor_boot.img ]]; then
+    mkdir "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorboot && cd "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorboot
+    "$PROJECT_DIR"/magiskboot_x86_64 unpack "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendor_boot.img > /dev/null 2>&1
+    cd "$PROJECT_DIR"
+    mv "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorboot/dtb "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorboot/dtb.img
+    extract-dtb "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendor_boot.img -o "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootimg > /dev/null # Extract vendorboot
+    # extract-ikconfig
+    [[ ! -e "${PROJECT_DIR}"/extract-ikconfig ]] && curl https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig > ${PROJECT_DIR}/extract-ikconfig
+    bash "${PROJECT_DIR}"/extract-ikconfig "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendor_boot.img > "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorboot_ikconfig
+    echo 'vendor_boot extracted'
+fi
+
 if [[ -f "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbo.img ]]; then
     extract-dtb "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbo.img -o "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbo > /dev/null # Extract dtbo
     echo 'dtbo extracted'
 fi
 
-# Extract dts
-mkdir -p "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootdts
-dtb_list=$(find "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootimg -name '*.dtb' -type f -printf '%P\n' | sort)
-for dtb_file in $dtb_list; do
-    dtc -I dtb -O dts -o "$(echo "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootdts/"$dtb_file" | sed -r 's|.dtb|.dts|g')" "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootimg/"$dtb_file" > /dev/null 2>&1
-done
+# Extract boot dts
+if [[ -d "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootimg ]]; then
+    mkdir -p "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootdts
+    dtb_list=$(find "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootimg -name '*.dtb' -type f -printf '%P\n' | sort)
+    for dtb_file in $dtb_list; do
+        dtc -I dtb -O dts -o "$(echo "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootdts/"$dtb_file" | sed -r 's|\.dtb$|.dts|g')" "$PROJECT_DIR"/working/"${UNZIP_DIR}"/bootimg/"$dtb_file" > /dev/null 2>&1
+    done
+fi
+
+# Extract vendor_boot dts
+if [[ -d "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootimg ]]; then
+    mkdir -p "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootdts
+    dtb_list=$(find "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootimg -name '*.dtb' -type f -printf '%P\n' | sort)
+    for dtb_file in $dtb_list; do
+        dtc -I dtb -O dts -o "$(echo "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootdts/"$dtb_file" | sed -r 's|\.dtb$|.dts|g')" "$PROJECT_DIR"/working/"${UNZIP_DIR}"/vendorbootimg/"$dtb_file" > /dev/null 2>&1
+    done
+fi
+
+# Extract dtbo dts
+if [[ -d "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbo ]]; then
+    mkdir -p "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbodts
+    cd "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbo
+    dtb_list=$(find . -name '*.dtb' -type f -printf '%P\n' | sort)
+    for dtb_file in $dtb_list; do
+        dtc -I dtb -O dts -o "$(echo "$PROJECT_DIR"/working/"${UNZIP_DIR}"/dtbodts/"$dtb_file" | sed -r 's|\.dtb$|.dts|g')" "$dtb_file" > /dev/null 2>&1
+    done
+    cd "$PROJECT_DIR"
+fi
 
 # extract PARTITIONS
 cd "$PROJECT_DIR"/working/"${UNZIP_DIR}" || exit
